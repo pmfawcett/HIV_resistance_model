@@ -8,13 +8,10 @@ from sklearn.metrics import (
     accuracy_score,
     classification_report,
     roc_curve,
-    RocCurveDisplay,
     roc_auc_score,
     auc,
     confusion_matrix,
-    precision_recall_curve,
-    PrecisionRecallDisplay,
-    average_precision_score)
+    precision_recall_curve)
 
 import matplotlib.pyplot as plt
 import seaborn as sns

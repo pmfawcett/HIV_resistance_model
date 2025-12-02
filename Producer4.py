@@ -8,7 +8,6 @@ import h5py
 K_MER_SIZE = 6
 BATCH_SIZE = 16
 LAYERS_TO_SAVE = 30
-# MAX_SEQUENCES = 16
 
 MODEL_PATH = 'InstaDeepAI/nucleotide-transformer-v2-500m-multi-species'
 OUT_PATH = "V2_500_multi_embeddings_expanded_CLS_separate.h5"
