@@ -6,17 +6,17 @@ import pandas as pd
 import h5py
 
 K_MER_SIZE = 6
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 LAYERS_TO_SAVE = 30
 
 MODEL_PATH = 'InstaDeepAI/nucleotide-transformer-v2-500m-multi-species'
-OUT_PATH = "V2_500_multi_embeddings_expanded_CLS_separate.h5"
+OUT_PATH = 'V2_500_multi_embeddings_expanded_CLS_separate_N_labeled_seqs.h5'
+expanded_file = 'New_sequences_labeled_with_Ns.csv'
 
 # Import the tokenizer and the model
 tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path=MODEL_PATH, trust_remote_code=True)
 model = AutoModelForMaskedLM.from_pretrained(pretrained_model_name_or_path=MODEL_PATH, trust_remote_code=True)
 
-expanded_file = 'E:/Users/Wombat/Documents/Python/Expanded_Limited_Sequences.csv'
 df = pd.read_csv(expanded_file)
 all_sequences = df['sequence'].astype(str).tolist()
 labels = df['label'].astype(int).tolist()
@@ -27,7 +27,10 @@ MAX_SEQUENCES = len(all_sequences)
 print('Class distribution:',
       {int(k): int(v) for k, v in zip(*np.unique(labels, return_counts=True))})
 
-max_length = ceil(max([len(_) for _ in all_sequences]) / K_MER_SIZE + K_MER_SIZE - 1)
+max_Ns = max(seq.count("N") for seq in all_sequences)
+print("Maximum number of Ns in any input sequence is:", max_Ns)
+
+max_length = ceil(max([len(_) for _ in all_sequences]) / K_MER_SIZE + K_MER_SIZE - 1) + max_Ns * 5
 # Finds the maximum length sequence in the set, divides by the number of hexamers, and adds five positions for any dangling nucleotides
 print(f'Maximum positions is: {max_length}')
 
@@ -39,6 +42,8 @@ for i, j in enumerate(range(0, MAX_SEQUENCES, BATCH_SIZE)):
     print(f'Working on batch {i} at position {j} of all_sequences')
     sequences = all_sequences[j: j + BATCH_SIZE]
     print(f'There are {len(sequences)} sequences in this batch')
+    for seq in sequences:
+        print(seq)
     token_ids = tokenizer.batch_encode_plus(
         sequences,
         return_tensors='pt',

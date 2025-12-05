@@ -16,10 +16,13 @@ from sklearn.metrics import (
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+## Perceptron specific imports ##
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 # === Load embeddings from HDF5 ===
-file_path = "V2_500_multi_embeddings_expanded_CLS_separate.h5"
-THRESHOLD = 0.45
+file_path = 'V2_500_multi_embeddings_expanded_CLS_separate_N_labeled_seqs.h5'
+THRESHOLD = 0.5
 
 layer_keys = []
 
@@ -37,9 +40,26 @@ with h5py.File(file_path, mode='r') as ifh:
     else:
         raise ValueError('No Labels present in the h5 file')
 
-    print(f'There were a total of {len(layer_keys)/2} layers in this h5 file')
+    print(f'There were a total of {int(len(layer_keys)/2)} layers in this h5 file')
+    clf = make_pipeline(StandardScaler(),
+                        LogisticRegression(max_iter=3000, class_weight="balanced", solver="lbfgs", C=2.0))
 
-    for layer_index in range(14, 15):
+    clf_mlp = make_pipeline(
+        StandardScaler(),
+        MLPClassifier(
+            hidden_layer_sizes=(256, 128),
+            activation='relu',
+            solver='adam',
+            alpha=1e-4,  # L2 regularization
+            batch_size=32,
+            learning_rate_init=1e-3,
+            max_iter=200,  # or more
+            random_state=42,
+            early_stopping=True,
+            validation_fraction=0.1
+            )
+        )
+    for layer_index in range(10, 11):
     #for layer_index in range(int(len(layer_keys)/2)):
 
         X_layer = np.array(ifh['Layer' + str(layer_index)])
@@ -52,10 +72,21 @@ with h5py.File(file_path, mode='r') as ifh:
         # === Train/test split and classification as before ===
         X_train, X_val, y_train, y_val = train_test_split(X, labels, test_size=0.2, random_state=42, stratify=labels)
 
-        clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=3000, class_weight="balanced", solver="lbfgs", C=2.0))
+        print('\nCalculating AUC cross-validations for logistic regression')
+        cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        scores = cross_val_score(clf, X, labels, cv=cv, scoring='roc_auc')
+        print('\nMean AUC over folds from LR:', scores.mean())
+        print('AUC variance over folds from LR:', scores.var())
+        print('LR raw scores', scores)
+
+        print('\nCalculating AUC cross-validations for multilayer perceptron')
+        cv_mlp = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        scores_mlp = cross_val_score(clf_mlp, X, labels, cv=cv_mlp, scoring='roc_auc')
+        print('Mean AUC over folds from MLP:', scores_mlp.mean())
+        print('AUC variance over folds from MLP:', scores_mlp.var())
+        print('MLP raw scores', scores_mlp)
 
         clf.fit(X_train, y_train)
-
         probs = clf.predict_proba(X_val)[:, 1]
         y_pred = (probs >= THRESHOLD).astype(int)
 
@@ -71,9 +102,9 @@ with h5py.File(file_path, mode='r') as ifh:
     # ----------------------------------------------------
     # Confusion matrix
     # ----------------------------------------------------
-    cm = confusion_matrix(y_val, y_pred)
-    cm_labels = ["Drug Sensitive", "Drug Resistant"]
-    print("Confusion matrix:\n", cm)
+        cm = confusion_matrix(y_val, y_pred)
+        cm_labels = ["Drug Sensitive", "Drug Resistant"]
+        print("Confusion matrix:\n", cm)
 
     # ----------------------------------------------------
     # Precision-Recall
@@ -241,5 +272,5 @@ with h5py.File(file_path, mode='r') as ifh:
     ax6.set_title("Zoomed Threshold Sweep (0.3–0.8)", fontsize=14)
 
     plt.tight_layout()
-    plt.show()
 
+    plt.show()
