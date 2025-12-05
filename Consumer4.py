@@ -72,19 +72,19 @@ with h5py.File(file_path, mode='r') as ifh:
         # === Train/test split and classification as before ===
         X_train, X_val, y_train, y_val = train_test_split(X, labels, test_size=0.2, random_state=42, stratify=labels)
 
-        print('\nCalculating AUC cross-validations for logistic regression')
-        cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-        scores = cross_val_score(clf, X, labels, cv=cv, scoring='roc_auc')
-        print('\nMean AUC over folds from LR:', scores.mean())
-        print('AUC variance over folds from LR:', scores.var())
-        print('LR raw scores', scores)
-
-        print('\nCalculating AUC cross-validations for multilayer perceptron')
-        cv_mlp = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-        scores_mlp = cross_val_score(clf_mlp, X, labels, cv=cv_mlp, scoring='roc_auc')
-        print('Mean AUC over folds from MLP:', scores_mlp.mean())
-        print('AUC variance over folds from MLP:', scores_mlp.var())
-        print('MLP raw scores', scores_mlp)
+        # print('\nCalculating AUC cross-validations for logistic regression')
+        # cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        # scores = cross_val_score(clf, X, labels, cv=cv, scoring='roc_auc')
+        # print('\nMean AUC over folds from LR:', scores.mean())
+        # print('AUC variance over folds from LR:', scores.var())
+        # print('LR raw scores', scores)
+        #
+        # print('\nCalculating AUC cross-validations for multilayer perceptron')
+        # cv_mlp = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        # scores_mlp = cross_val_score(clf_mlp, X, labels, cv=cv_mlp, scoring='roc_auc')
+        # print('Mean AUC over folds from MLP:', scores_mlp.mean())
+        # print('AUC variance over folds from MLP:', scores_mlp.var())
+        # print('MLP raw scores', scores_mlp)
 
         clf.fit(X_train, y_train)
         probs = clf.predict_proba(X_val)[:, 1]
@@ -192,6 +192,19 @@ with h5py.File(file_path, mode='r') as ifh:
     ax3 = fig.add_subplot(gs[0, 1])
     ax3.plot(fpr, tpr, linewidth=2)
     ax3.plot([0, 1], [0, 1], linestyle="--", color="grey")
+
+    idx = np.argmin(np.abs(roc_thresh - THRESHOLD))
+    tpr_at_thr = tpr[idx]
+    fpr_at_thr = fpr[idx]
+
+    # Vertical line at this FPR
+    ax3.axvline(fpr_at_thr, linestyle="--", color="tab:gray", linewidth=1.5)
+    # Mark the point on ROC
+    ax3.plot(fpr_at_thr, tpr_at_thr, 'o', color="tab:gray", markersize=6,
+             label=f"thr={THRESHOLD:.2f}")
+
+    ax3.legend(loc="lower right")
+
     ax3.set_title(f"ROC Curve (AUC = {roc_auc:.3f})", fontsize=16)
     ax3.set_xlabel("False Positive Rate", fontsize=12)
     ax3.set_ylabel("True Positive Rate (Sensitivity)", fontsize=12)
