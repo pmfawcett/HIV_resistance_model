@@ -41,10 +41,10 @@ with h5py.File(file_path, mode='r') as ifh:
         raise ValueError('No Labels present in the h5 file')
 
     print(f'There were a total of {int(len(layer_keys)/2)} layers in this h5 file')
-    clf = make_pipeline(StandardScaler(),
+    clf = make_pipeline(StandardScaler(),  # This makes the pipeline for logistic regression for use later
                         LogisticRegression(max_iter=3000, class_weight="balanced", solver="lbfgs", C=2.0))
 
-    clf_mlp = make_pipeline(
+    clf_mlp = make_pipeline(        #  This is only if you are using a multilayer perceptron later
         StandardScaler(),
         MLPClassifier(
             hidden_layer_sizes=(256, 128),
@@ -72,13 +72,13 @@ with h5py.File(file_path, mode='r') as ifh:
         # === Train/test split and classification as before ===
         X_train, X_val, y_train, y_val = train_test_split(X, labels, test_size=0.2, random_state=42, stratify=labels)
 
-        # print('\nCalculating AUC cross-validations for logistic regression')
-        # cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-        # scores = cross_val_score(clf, X, labels, cv=cv, scoring='roc_auc')
-        # print('\nMean AUC over folds from LR:', scores.mean())
-        # print('AUC variance over folds from LR:', scores.var())
-        # print('LR raw scores', scores)
-        #
+        print('\nCalculating AUC cross-validations for logistic regression')
+        cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        scores = cross_val_score(clf, X, labels, cv=cv, scoring='roc_auc')
+        print('\nMean AUC over folds from LR:', scores.mean())
+        print('AUC variance over folds from LR:', scores.var())
+        print('LR raw scores', scores)
+
         # print('\nCalculating AUC cross-validations for multilayer perceptron')
         # cv_mlp = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
         # scores_mlp = cross_val_score(clf_mlp, X, labels, cv=cv_mlp, scoring='roc_auc')
@@ -226,6 +226,7 @@ with h5py.File(file_path, mode='r') as ifh:
     ax4b = ax4.twinx()
     ax4b.plot(thresholds, false_pos, linestyle="--", linewidth=2, label="False Positives", color="tab:red")
     ax4b.plot(thresholds, false_neg, linestyle="--", linewidth=2, label="False Negatives", color="tab:green")
+    ax4b.plot(thresholds, false_neg + false_pos, linestyle="--", linewidth=2, label="False sum", color="tab:orange")
     ax4b.set_ylabel("Counts", fontsize=12)
 
     # vertical line at chosen threshold
@@ -271,6 +272,8 @@ with h5py.File(file_path, mode='r') as ifh:
     ax6b.plot(thresholds[mask], false_pos[mask], linestyle="--", linewidth=2, label="False Positives", color="tab:red")
     ax6b.plot(thresholds[mask], false_neg[mask], linestyle="--", linewidth=2, label="False Negatives",
               color="tab:green")
+    ax6b.plot(thresholds[mask], false_neg[mask]+false_pos[mask], linestyle="--", linewidth=2, label="False sum",
+             color="tab:orange")
     ax6b.set_ylabel("Counts", fontsize=12)
 
     # vertical line for chosen threshold if in zoom range
