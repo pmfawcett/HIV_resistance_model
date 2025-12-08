@@ -25,6 +25,8 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score, cross_vali
 # === Load embeddings from HDF5 ===
 file_path = 'V2_500_multi_embeddings_expanded_CLS_separate_N_labeled_seqs.h5'
 THRESHOLD = 0.5
+LAYERS_TO_ANALYZE = (10,11)  # list here as tuple or range. Add a trailing comma if only one item
+# For all layers, set to range(int(len(layer_keys)/2)):
 
 layer_keys = []
 
@@ -63,12 +65,12 @@ clf = make_pipeline(
 
 cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)  # Cross-validation split
 
-AUC_results = {}
+AUC_cat_results = {}
 AUC_seq_results = {}
 recall_seq_results = {}
 
 with (h5py.File(file_path, mode='r') as ifh):
-    print(f'Here are the datasets present in the h5 file {file_path}:')
+    print(f'Datasets present in the h5 file {file_path}:')
     for item in ifh.keys():
         print('\t', item)
         if item != 'Labels':
@@ -82,8 +84,7 @@ with (h5py.File(file_path, mode='r') as ifh):
 
     print(f'There were a total of {int(len(layer_keys) / 2)} layers in this h5 file')
 
-    for layer_index in range(10, 11):
-    #for layer_index in range(int(len(layer_keys)/2)):
+    for layer_index in LAYERS_TO_ANALYZE:
 
         X_seq = np.array(ifh['Layer' + str(layer_index)])
         X_cls = np.array(ifh['CLS' + str(layer_index)])
@@ -118,35 +119,34 @@ with (h5py.File(file_path, mode='r') as ifh):
             stratify=labels
         )
 
-        print('\nCalculating CLS+SEQ AUC cross-validations for logistic regression:')
+        print('\nCalculating CLS+SEQ cross-validations for logistic regression:')
         scores = cross_val_score(clf, X_cat, labels, cv=cv, scoring='roc_auc')
-        print('Mean CLS+SEQ AUC over folds from LR:', scores.mean())
-        print('CLS+SEQ AUC variance over folds from LR:', scores.var())
-        print('CLS+SEQ LR raw AUC scores', scores)
-        AUC_results['Layer '+str(layer_index)] = scores.mean()
+        print('\tMean CLS+SEQ AUC over folds from LR:', scores.mean())
+        print('\tCLS+SEQ AUC variance over folds from LR:', scores.var())
+        print('\tCLS+SEQ LR raw AUC scores', scores)
+        AUC_cat_results['Layer '+str(layer_index)] = scores.mean()
 
 
-        # print('\nCalculating SEQ AUC cross-validations for logistic regression:')
+        # print('\nCalculating SEQ cross-validations for logistic regression:')
         # scores = cross_val_score(clf, X_seq, labels, cv=cv, scoring='roc_auc')
         # print('Mean SEQ AUC over folds from LR:', scores.mean())
         # print('SEQ AUC variance over folds from LR:', scores.var())
         # print('SEQ LR raw AUC scores', scores)
         # AUC_seq_results['Layer ' + str(layer_index)] = scores.mean()
 
-        print('\nCalculating SEQ AUC cross-validations for logistic regression:')
-
+        print('\nCalculating SEQ cross-validations for logistic regression:')
         scores = cross_validate(clf, X_seq, labels, cv=10, scoring=['recall', 'roc_auc'])
-        print('Mean SEQ AUC over folds from LR:', scores['test_roc_auc'].mean())
-        print('SEQ AUC variance over folds from LR:', scores['test_roc_auc'].var())
-        print('SEQ LR raw AUC scores', scores['test_roc_auc'])
-        print('Mean SEQ recall over folds from LR:', scores['test_recall'].mean())
-        print('SEQ recall variance over folds from LR:', scores['test_recall'].var())
-        print('SEQ LR raw recall scores', scores['test_recall'])
+        print('\tMean SEQ AUC over folds from LR:', scores['test_roc_auc'].mean())
+        print('\tSEQ AUC variance over folds from LR:', scores['test_roc_auc'].var())
+        print('\tSEQ LR raw AUC scores', scores['test_roc_auc'])
+        print('\tMean SEQ recall over folds from LR:', scores['test_recall'].mean())
+        print('\tSEQ recall variance over folds from LR:', scores['test_recall'].var())
+        print('\tSEQ LR raw recall scores', scores['test_recall'])
 
         AUC_seq_results['Layer ' + str(layer_index)] = scores['test_roc_auc'].mean()
         recall_seq_results['Layer ' + str(layer_index)] = scores['test_recall'].mean()
 
-        # print('\nCalculating CLS AUC cross-validations for logistic regression:')
+        # print('\nCalculating CLS cross-validations for logistic regression:')
         # scores = cross_val_score(clf, X_seq, labels, cv=cv, scoring='roc_auc')
         # print('Mean CLS AUC over folds from LR:', scores.mean())
         # print('CLS AUC variance over folds from LR:', scores.var())
@@ -171,7 +171,7 @@ with (h5py.File(file_path, mode='r') as ifh):
         # print('Recall variance over folds from LGBM:', scores.var())
         # print('LGBM raw recall scores', scores)
 
-        print('Fitting model using concatenated CLS and mean-pooled sequence tokens')
+        print('\nFitting model using concatenated CLS and mean-pooled sequence tokens')
         clf.fit(X_cat_train, y_cat_train)
         probs_cat: np.ndarray = clf.predict_proba(X_cat_val)[:, 1]
         y_cat_pred = (probs_cat >= THRESHOLD).astype(int)
@@ -190,7 +190,7 @@ with (h5py.File(file_path, mode='r') as ifh):
         # Decide which set of values to report
         # -----------------------------------------------------------
 
-        print('Plots and data are based on mean-pooled SEQ tokens')
+        print('\nPlots and metric data are based on mean-pooled SEQ tokens')
         y_pred = y_seq_pred
         y_val = y_seq_val
         probs = probs_seq
@@ -201,15 +201,12 @@ with (h5py.File(file_path, mode='r') as ifh):
 
         print(f'\n\t=== Classifier threshold set at {THRESHOLD} ===')
         print('\tAccuracy:', accuracy_score(y_val, y_pred))
+        print('\tROC-AUC:', roc_auc_score(y_val, probs))
         print('\tPred counts:', {int(k): int(v) for k, v in zip(*np.unique(y_pred, return_counts=True))})
         print('\t', classification_report(y_val, y_pred, digits=4, zero_division=0))
-        try:
-            print('ROC-AUC:', roc_auc_score(y_val, probs))
-        except ValueError:
-            print('ROC-AUC: cannot compute (only one class present)')
 
         cm = confusion_matrix(y_cat_val, y_cat_pred)
-        print('CLS+SEQ token confusion matrix:\n', cm)
+        print('\nCLS+SEQ token confusion matrix:\n', cm)
         cm = confusion_matrix(y_seq_val, y_seq_pred)
         print('\nSEQ token alone confusion matrix:\n', cm)
         cm_labels = ['Drug Sensitive', 'Drug Resistant']
@@ -221,17 +218,18 @@ with (h5py.File(file_path, mode='r') as ifh):
 
     print(f'\nAnalysing winning token strategy for {", ".join(AUC_seq_results)}')
     for k in AUC_seq_results:
-        print(f'SEQ results for {k}: recall mean {recall_seq_results[k]}, AUC mean {AUC_seq_results[k]}')
+        print(f'\nSEQ results for {k}: recall mean {recall_seq_results[k]}, AUC mean {AUC_seq_results[k]}')
+        print(f'CLS+SEQ results for {k}: recall mean {recall_seq_results[k]}, AUC mean {AUC_seq_results[k]}')
 
-    k, v = max(AUC_results.items(), key=lambda x: x[1])
+    k_cat, v_cat = max(AUC_cat_results.items(), key=lambda x: x[1])
     k_seq, v_seq = max(AUC_seq_results.items(), key=lambda x: x[1])
 
-    print(f'Champion layer for CLS+SEQ was {k} with mean AUC: {v}')
+    print(f'\nChampion layer for CLS+SEQ was {k_cat} with mean AUC: {v_cat}')
     print(f'Champion layer for SEQ was {k_seq} with mean AUC: {v_seq}')
-    if v_seq > v:
-        print('SEQ alone wins')
+    if v_seq > v_cat:
+        print(f'SEQ alone wins {k}')
     else:
-        print('CLS+SEQ alone wins')
+        print(f'CLS+SEQ alone wins {k}')
 
     # ----------------------------------------------------
     # Precision-Recall
@@ -423,7 +421,5 @@ with (h5py.File(file_path, mode='r') as ifh):
     ax6.legend(lines1 + lines2, labels1 + labels2, fontsize=11, loc='upper right')
 
     ax6.set_title(label='Zoomed Threshold Sweep (0.3–0.8)', fontsize=14)
-
-    plt.tight_layout()
 
     plt.show()
