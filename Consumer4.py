@@ -5,7 +5,6 @@ import numpy as np
 from sklearn.model_selection import (
     train_test_split, 
     StratifiedKFold, 
-    cross_val_score, 
     cross_validate
 )
 from sklearn.pipeline import make_pipeline
@@ -80,7 +79,6 @@ AUC_cat_results = {}
 AUC_seq_results = {}
 recall_seq_results = {}
 recall_cat_results = {}
-layer_keys = []
 cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)  # Cross-validation split for use later
 
 # ------------------------------------
