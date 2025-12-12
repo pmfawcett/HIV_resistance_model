@@ -1,10 +1,10 @@
 import h5py
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import seaborn as sns
 import numpy as np
 from sklearn.model_selection import (
-    train_test_split, 
-    StratifiedKFold, 
+    train_test_split,
     cross_validate
 )
 from sklearn.pipeline import make_pipeline
@@ -28,10 +28,13 @@ from textwrap import fill
 from sklearn.neural_network import MLPClassifier
 from lightgbm import LGBMClassifier
 
-EMBEDDINGS_FILE_PATH = 'V2_500_multi_embeddings_expanded_CLS_separate_N_labeled_seqs.h5'
+CV_NUM = 10 # Number of cross-validation splits to perform
+RANDOM_STATE = 42
+EMBEDDINGS_FILE_PATH = 'V2_5B_multi_embeddings_expanded_CLS_separate_N_labeled_seqs.h5'
+    #'V2_500_multi_embeddings_expanded_CLS_separate_N_labeled_seqs.h5'
 THRESHOLD = 0.5
-LAYERS_TO_ANALYZE = (10,11)  # list here as tuple or range. Add a trailing comma if only one item
-# For all layers, set to range(int(len(layer_keys)/2)):
+LAYERS_TO_ANALYZE = range(9,10)  # list here as tuple or range. Add a trailing comma if only one item
+# For all layers, set to range(int(len(layer_keys)/2)) (if you saved every layer from the model)
 
 # -----------------------------------------------------------------------------
 # Make pipelines for Logistic regression and optional alternative classifiers
@@ -56,7 +59,7 @@ clf_mlp = make_pipeline(  # This is only if you are using a multilayer perceptro
         batch_size=32,
         learning_rate_init=1e-3,
         max_iter=200,  # or more
-        random_state=42,
+        random_state=RANDOM_STATE,
         early_stopping=True,
         validation_fraction=0.1
     )
@@ -74,15 +77,13 @@ clf_LGBM = make_pipeline(  # This is only if you are using the LightGBM classifi
     )
 )
 
-
 AUC_cat_results = {}
 AUC_seq_results = {}
 recall_seq_results = {}
 recall_cat_results = {}
-cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)  # Cross-validation split for use later
 
 # ------------------------------------
-# Open HD5 file and determine datasets
+# Open HDF5 file and determine datasets
 # ------------------------------------
 
 with (h5py.File(EMBEDDINGS_FILE_PATH, mode='r') as ifh):
@@ -109,31 +110,23 @@ with (h5py.File(EMBEDDINGS_FILE_PATH, mode='r') as ifh):
 
         labels = all_labels[:len(X_cat)]
         print(f'\nSplitting and training {len(X_cat)} embeddings from layer {layer_index}:')
+
         # === Train/test split and classification as before ===
-        X_cat_train, X_cat_val, _, _ = train_test_split(
-     X_cat,
+
+        idx_train, idx_val, y_train, y_val = train_test_split(
+            np.arange(len(labels)),  # ensure all arrays have the same first dimension length
             labels,
             test_size=0.2,
-            random_state=42,
+            random_state=RANDOM_STATE,
             stratify=labels
         )
-        X_seq_train, X_seq_val, _, _ = train_test_split(
-            X_seq,
-            labels,
-            test_size=0.2,
-            random_state=42,
-            stratify=labels
-        )
-        X_cls_train, X_cls_val, y_train, y_val = train_test_split(
-            X_cls,
-            labels,
-            test_size=0.2,
-            random_state=42,
-            stratify=labels
-        )
-        
+
+        X_cat_train, X_cat_val = X_cat[idx_train], X_cat[idx_val]
+        X_seq_train, X_seq_val = X_seq[idx_train], X_seq[idx_val]
+        X_cls_train, X_cls_val = X_cls[idx_train], X_cls[idx_val]
+
         print('\nCalculating CLS+SEQ cross-validations for logistic regression:')
-        scores = cross_validate(clf, X_cat, labels, cv=10, scoring=['recall', 'roc_auc'])
+        scores = cross_validate(clf, X_cat, labels, cv=CV_NUM, scoring=['recall', 'roc_auc'])
         print('\tMean CLS+SEQ AUC over folds from LR:', scores['test_roc_auc'].mean())
         print('\tCLS+SEQ AUC variance over folds from LR:', scores['test_roc_auc'].var())
         # print('\tCLS+SEQ LR raw AUC scores', scores['test_roc_auc'])
@@ -143,15 +136,8 @@ with (h5py.File(EMBEDDINGS_FILE_PATH, mode='r') as ifh):
         AUC_cat_results['Layer '+str(layer_index)] = scores['test_roc_auc'].mean()
         recall_cat_results['Layer ' + str(layer_index)] = scores['test_recall'].mean()
 
-        # print('\nCalculating SEQ cross-validations for logistic regression:')
-        # scores = cross_val_score(clf, X_seq, labels, cv=cv, scoring='roc_auc')
-        # print('Mean SEQ AUC over folds from LR:', scores.mean())
-        # print('SEQ AUC variance over folds from LR:', scores.var())
-        # print('SEQ LR raw AUC scores', scores)
-         # AUC_seq_results['Layer ' + str(layer_index)] = scores.mean()
-
         print('\nCalculating SEQ cross-validations for logistic regression:')
-        scores = cross_validate(clf, X_seq, labels, cv=10, scoring=['recall', 'roc_auc'])
+        scores = cross_validate(clf, X_seq, labels, cv=CV_NUM, scoring=['recall', 'roc_auc'])
         print('\tMean SEQ AUC over folds from LR:', scores['test_roc_auc'].mean())
         print('\tSEQ AUC variance over folds from LR:', scores['test_roc_auc'].var())
         # print('\tSEQ LR raw AUC scores', scores['test_roc_auc'])
@@ -162,18 +148,11 @@ with (h5py.File(EMBEDDINGS_FILE_PATH, mode='r') as ifh):
         AUC_seq_results['Layer ' + str(layer_index)] = scores['test_roc_auc'].mean()
         recall_seq_results['Layer ' + str(layer_index)] = scores['test_recall'].mean()
 
-        # print('\nCalculating CLS cross-validations for logistic regression:')
+        # print('\nCalculating CLS cross-validations for logistic regression: ')
         # scores = cross_val_score(clf, X_seq, labels, cv=cv, scoring='roc_auc')
-        # print('Mean CLS AUC over folds from LR:', scores.mean())
+        # print ('Mean CLS AUC over folds from LR:', scores.mean())
         # print('CLS AUC variance over folds from LR:', scores.var())
         # print('CLS LR raw AUC scores', scores)
-
-        #
-        # print('\nCalculating recall cross-validations for logistic regression:')
-        # scores = cross_val_score(clf, X, labels, cv=cv, scoring='recall')
-        # print('Mean recall over folds from LR:', scores.mean())
-        # print('Recall variance over folds from LR:', scores.var())
-        # print('LR raw recall scores', scores)
 
         # print('\nCalculating AUC cross-validations for multilayer perceptron')
         # scores_mlp = cross_val_score(clf_mlp, X, labels, cv=cv, scoring='roc_auc')
@@ -302,6 +281,7 @@ false_neg = np.array(false_neg)
 # Plotting (6-panel layout)
 # -------------------------
 fig = plt.figure(figsize=(18, 18))
+fig.suptitle(f'Layer {layer_index} performance', fontsize=24, y=0.93)
 gs = fig.add_gridspec(3, 2, hspace=0.30, wspace=0.25)
 
 # -------------------------
@@ -344,7 +324,7 @@ ax3.plot(fpr_at_thr, tpr_at_thr, 'o', color='tab:gray', markersize=6,
 
 ax3.legend(loc='lower right')
 
-ax3.set_title(f'ROC Curve (AUC = {roc_auc:.3f})', fontsize=16)
+ax3.set_title(f'ROC Curve (AUC = {roc_auc:.4f})', fontsize=16)
 ax3.set_xlabel('False Positive Rate', fontsize=12)
 ax3.set_ylabel('True Positive Rate (Sensitivity)', fontsize=12)
 ax3.grid(True, linestyle='--', alpha=0.4)
@@ -356,12 +336,12 @@ ax2 = fig.add_subplot(gs[1, 0])
 ax2.plot(rec_cat, prec_cat, linewidth=1, color='tab:blue', label='CLS+SEQ')
 ax2.plot(rec_cls, prec_cls, linewidth=1, color='tab:red', label='CLS')
 ax2.plot(rec_seq, prec_seq, linewidth=1, color='tab:green', label='SEQ')
-ax2.set_title(label=f'Precision–Recall Curve (AUC = {pr_auc:.3f})', fontsize=16)
+ax2.set_title(label=f'Precision–Recall Curve (AUC = {pr_auc:.4f})', fontsize=16)
 ax2.set_xlabel(xlabel='Recall', fontsize=12)
 ax2.set_ylabel(ylabel='Precision', fontsize=12)
 ax2.grid(visible=True, linestyle='--', alpha=0.4)
 
-# draw vertical line for chosen THRESHOLD if we can map it to a recall
+# draw a vertical line for chosen THRESHOLD if we can map it to a recall
 if len(pr_thresh) > 0:
     # find threshold index closest to THRESHOLD
     idx = np.argmin(np.abs(pr_thresh - THRESHOLD))
@@ -390,10 +370,10 @@ ax5.set_xlabel(xlabel='Recall', fontsize=12)
 ax5.set_ylabel(ylabel='Precision', fontsize=12)
 ax5.grid(visible=True, linestyle='--', alpha=0.4)
 
-# mark threshold on zoomed PR if mapping exists
+# mark the threshold on zoomed PR if mapping exists
 if len(pr_thresh) > 0:
     ax5.axvline(rec_at_thr, linestyle='--', color='tab:gray', linewidth=1.5)
-    ax5.plot(rec_at_thr, prec_at_thr, marker='o', markersize=6, color='tab:gray')
+    ax5.plot(rec_at_thr, prec_at_thr, marker='o', markersize=6, color='tab:gray', label=f'thr={THRESHOLD:.2f}')
 
 lines1, labels1 = ax5.get_legend_handles_labels()
 ax5.legend(lines1, labels1, fontsize=11, loc='lower left')
@@ -412,12 +392,13 @@ ax4.grid(visible=True, linestyle='--', alpha=0.4)
 
 # FP and FN counts (right axis)
 ax4b = ax4.twinx()
+ax4b.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))  # Makes sure counts are always integer values
 ax4b.plot(thresholds, false_pos, linestyle='--', linewidth=2, label='False Positives', color='tab:red')
 ax4b.plot(thresholds, false_neg, linestyle='--', linewidth=2, label='False Negatives', color='tab:green')
-ax4b.plot(thresholds, false_neg + false_pos, linestyle='--', linewidth=2, label='False sum', color='tab:orange', visible=False)
+# ax4b.plot(thresholds, false_neg + false_pos, linestyle='--', linewidth=2, label='FP+FN', color='tab:orange', visible=True)
 ax4b.set_ylabel(ylabel='Counts', fontsize=12)
 
-# vertical line at chosen threshold
+# vertical line at the chosen threshold
 ax4.axvline(THRESHOLD, linestyle='--', color='tab:gray', linewidth=1.5)
 
 # Combined legend
@@ -440,6 +421,7 @@ ax6.set_ylim(bottom=0.85, top=1)
 ax6.grid(visible=True, linestyle='--', alpha=0.4)
 
 ax6b = ax6.twinx()
+ax6b.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 ax6b.plot(thresholds[mask], false_pos[mask], linestyle='--', linewidth=2, label='False Positives', color='tab:red')
 ax6b.plot(thresholds[mask], false_neg[mask], linestyle='--', linewidth=2, label='False Negatives',
           color='tab:green')
@@ -447,7 +429,7 @@ ax6b.plot(thresholds[mask], false_neg[mask] + false_pos[mask], linestyle='--', l
           color='tab:orange', visible=True)
 ax6b.set_ylabel('Counts', fontsize=12)
 
-# Vertical line for chosen threshold if in zoom range
+# Vertical line for the chosen threshold if in zoom range
 if 0.3 <= THRESHOLD <= 0.8:
     ax6.axvline(THRESHOLD, linestyle='--', color='tab:gray', linewidth=1.5)
 
