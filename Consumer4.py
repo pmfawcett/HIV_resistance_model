@@ -260,7 +260,7 @@ prec_seq, rec_seq, pr_thresh_seq = precision_recall_curve(y_val, probs_seq)
 # Threshold sweep for accuracy, FP, FN
 # ------------------------------------
 
-thresholds = np.linspace(0, 1, 200)
+thresholds = np.linspace(start= 0, stop=1, num=200)
 accuracies = []
 false_pos = []
 false_neg = []
@@ -281,8 +281,8 @@ false_neg = np.array(false_neg)
 # Plotting (6-panel layout)
 # -------------------------
 fig = plt.figure(figsize=(18, 18))
-fig.suptitle(f'Layer {layer_index} performance', fontsize=24, y=0.93)
-gs = fig.add_gridspec(3, 2, hspace=0.30, wspace=0.25)
+fig.suptitle(t=f'Layer {layer_index} performance', fontsize=24, y=0.93)
+gs = fig.add_gridspec(nrows=4, ncols=2, hspace=0.30, wspace=0.25)
 
 # -------------------------
 # Panel 1: Confusion matrix
@@ -298,9 +298,9 @@ sns.heatmap(
     annot_kws={'size': 14},
     ax=ax1
 )
-ax1.set_title(f'Confusion Matrix (Threshold = {THRESHOLD})', fontsize=16)
-ax1.set_xlabel('Predicted Label', fontsize=12)
-ax1.set_ylabel('True Label', fontsize=12)
+ax1.set_title(label=f'Confusion Matrix (Threshold = {THRESHOLD})', fontsize=16)
+ax1.set_xlabel(xlabel='Predicted Label', fontsize=12)
+ax1.set_ylabel(ylabel='True Label', fontsize=12)
 
 # ------------------
 # Panel 2: ROC curve
@@ -324,10 +324,10 @@ ax3.plot(fpr_at_thr, tpr_at_thr, 'o', color='tab:gray', markersize=6,
 
 ax3.legend(loc='lower right')
 
-ax3.set_title(f'ROC Curve (AUC = {roc_auc:.4f})', fontsize=16)
-ax3.set_xlabel('False Positive Rate', fontsize=12)
-ax3.set_ylabel('True Positive Rate (Sensitivity)', fontsize=12)
-ax3.grid(True, linestyle='--', alpha=0.4)
+ax3.set_title(label=f'ROC Curve (AUC = {roc_auc:.4f})', fontsize=16)
+ax3.set_xlabel(xlabel='False Positive Rate', fontsize=12)
+ax3.set_ylabel(ylabel='True Positive Rate (Sensitivity)', fontsize=12)
+ax3.grid(visible=True, linestyle='--', alpha=0.4)
 
 # --------------------------------
 # Panel 3: Precision–Recall (full)
@@ -406,7 +406,7 @@ lines1, labels1 = ax4.get_legend_handles_labels()
 lines2, labels2 = ax4b.get_legend_handles_labels()
 ax4.legend(lines1 + lines2, labels1 + labels2, fontsize=11, loc='center right')
 
-ax4.set_title('Threshold Sweep: Accuracy, FP, FN', fontsize=16)
+ax4.set_title(label='Threshold Sweep: Accuracy, FP, FN', fontsize=16)
 
 # -----------------------------------------
 # Panel 6: Zoomed Threshold Sweep (0.3–0.8)
@@ -427,7 +427,7 @@ ax6b.plot(thresholds[mask], false_neg[mask], linestyle='--', linewidth=2, label=
           color='tab:green')
 ax6b.plot(thresholds[mask], false_neg[mask] + false_pos[mask], linestyle='--', linewidth=2, label='FP+FN',
           color='tab:orange', visible=True)
-ax6b.set_ylabel('Counts', fontsize=12)
+ax6b.set_ylabel(ylabel='Counts', fontsize=12)
 
 # Vertical line for the chosen threshold if in zoom range
 if 0.3 <= THRESHOLD <= 0.8:
@@ -439,5 +439,61 @@ lines2, labels2 = ax6b.get_legend_handles_labels()
 ax6.legend(lines1 + lines2, labels1 + labels2, fontsize=11, loc='upper right')
 
 ax6.set_title(label='Zoomed Threshold Sweep (0.3–0.8)', fontsize=14)
+
+# Plots predicted-probability distributions conditioned on the true label.
+# - optional overlaid histograms (density)
+# - smoothed KDE curves (seaborn)
+# - optional normal (Gaussian) fits plotted as dashed lines (computed from mu/sigma)
+# -------------------------------------------------------------------
+# Panel 7 (gs[3,0]): KDE + Gaussian fits (KDE-only histogram hidden)
+# Panel 8 (gs[3,1]): Same but Y axis zoomed to [0, 2.5]
+# -------------------------------------------------------------------
+
+probs_neg = probs[y_val == 0]
+probs_pos = probs[y_val == 1]
+
+# defensive checks
+if len(probs_neg) == 0 or len(probs_pos) == 0:
+    print("Warning: one of the classes has zero samples in validation; skipping distribution panels.")
+else:
+    # AX7: full density view (no histograms, KDE + normal fits)
+    ax7 = fig.add_subplot(gs[3, 0])
+    # draw KDEs and capture their line objects
+    sns.kdeplot(probs_neg, bw_adjust=1.0, color='tab:blue', linewidth=2, ax=ax7, label=f'Negative (n={len(probs_neg)})')
+    neg_line = ax7.lines[-1]
+    sns.kdeplot(probs_pos, bw_adjust=1.0, color='tab:orange', linewidth=2, ax=ax7, label=f'Positive (n={len(probs_pos)})')
+    pos_line = ax7.lines[-1]
+
+    # vertical line at the decision threshold
+    ax7.axvline(THRESHOLD, color='tab:gray', linestyle='--', linewidth=1.5, label=f'Threshold {THRESHOLD:.2f}')
+
+    # compute ymax from KDE line y-data and normal fits (ignore the vertical line)
+    kde_y_neg = neg_line.get_ydata()
+    kde_y_pos = pos_line.get_ydata()
+    ymax = np.max([kde_y_neg.max(), kde_y_pos.max()])
+    ax7.set_ylim(bottom=0, top=ymax * 1.15)  # give a little headroom
+
+    ax7.set_title(label='KDE fitted probability distributions by true label', fontsize=14)
+    ax7.set_xlabel(xlabel='Predicted probability of class=1', fontsize=11)
+    ax7.set_ylabel(ylabel='Density', fontsize=11)
+    ax7.set_xlim(left=0, right=1)
+    ax7.grid(visible=True, linestyle='--', alpha=0.3)
+    ax7.legend(loc='upper center', fontsize=9)
+
+    # AX8: zoomed Y-axis to show the areas near the threshold where density is low
+    ax8 = fig.add_subplot(gs[3, 1])
+    sns.kdeplot(probs_neg, bw_adjust=1.0, color='tab:blue', linewidth=2, ax=ax8, label=f'Negative (n={len(probs_neg)})')
+    sns.kdeplot(probs_pos, bw_adjust=1.0, color='tab:orange', linewidth=2, ax=ax8, label=f'Positive (n={len(probs_pos)})')
+
+    ax8.axvline(THRESHOLD, color='tab:gray', linestyle='--', linewidth=1.5, label=f'Threshold {THRESHOLD:.2f}')
+
+    # zoom Y-axis to range [0, 2.5] as requested
+    ax8.set_ylim(bottom=0, top=2.5)
+    ax8.set_title(label='KDE fitted probability distributions — Y zoomed (0–2.5)', fontsize=14)
+    ax8.set_xlabel(xlabel='Predicted probability of class=1', fontsize=11)
+    ax8.set_ylabel(ylabel='Density', fontsize=11)
+    ax8.set_xlim(left=0, right=1)
+    ax8.grid(visible=True, linestyle='--', alpha=0.3)
+    ax8.legend(loc='upper center', fontsize=9)
 
 plt.show()
