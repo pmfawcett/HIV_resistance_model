@@ -16,6 +16,8 @@ from math import log2
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm, gaussian_kde, probplot
+import statsmodels.api as sm
+from statsmodels.stats.diagnostic import het_breuschpagan
 
 
 class ReconstructSequence:
@@ -26,7 +28,7 @@ class ReconstructSequence:
     Note that simplifying assumptions are made in this process, such as the use of the most parsimonious codon
     for each amino acid position - i.e., fewer substitions are preferred first, and transversion mutations are used only
     when a transition mutation to the new codon is not possible. If multiple equally parsimonious codons exist, one is
-    chosen randomly. Note that the Stanfrod database sometimes suggests multiple possible amino acids for a position,
+    chosen randomly. Note that the Stanford database sometimes suggests multiple possible amino acids for a position,
     presumably arising from ambiguity in the underlying DNA sequence. This program just selects the first listed
     possible amino acid.  The reference integrase sequence is hard-coded and taken from strain HXB2 / accession K03455
     """
@@ -194,14 +196,39 @@ print(f'\nNumber of Xs: {x_counter}')
 print(f'Number of 0 labels: {label_counter} at threshold {A.threshold} out of {i} total rows ({(label_counter/i)*100:.2f}%)')
 print('\n')
 
+data = np.asarray(fold_changes)
+
+# -------------------------------------------------
+# Perform Breusch-Pagan test for heteroscedasticity
+# -------------------------------------------------
+
+# Fit a baseline model (intercept only) to get residuals
+# This treats the data as a single distribution and finds deviations from the mean
+X_baseline = np.ones(len(data))
+model = sm.OLS(data, X_baseline).fit()
+squared_residuals = model.resid ** 2
+# Create the 'Linear' predictor (the range of the data)
+# We then test if variance changes as the value of the fold change increases
+predictor = sm.add_constant(data)
+
+# Perform Breusch-Pagan Test
+# H0: Variance is constant (homoscedastic)
+# HA: Variance changes linearly with the predictor
+lm_stat, p_value, f_stat, f_p_value = het_breuschpagan(squared_residuals, predictor)
+
+print(f"Breusch-Pagan p-value: {p_value}")
+
+if p_value < 0.05:
+    print("Result: Heteroscedastic. Variance changes linearly within the range.")
+else:
+    print("Result: Homoscedastic. Variance is stable across the range.")
+
 # ------------------------------------------------------------------------------
 #  Now plot the distribution of fold changes as histogram, gaussian, and KDE fit
 # ------------------------------------------------------------------------------
 
-data = np.asarray(fold_changes)
-
 # Robust histogram range: trim extreme tails
-low, high = np.percentile(data, q=[1, 99])
+low, high = np.percentile(data, q=[0.0001, 99.9999])
 
 # Create a two-panel figure
 fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 4))
