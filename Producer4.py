@@ -9,30 +9,41 @@ K_MER_SIZE = 6
 BATCH_SIZE = 4
 LAYERS_TO_SAVE = 30
 
-MODEL_PATH = 'InstaDeepAI/nucleotide-transformer-v2-500m-multi-species'
-OUT_PATH = 'V2_500_multi_embeddings_expanded_CLS_separate_N_labeled_seqs.h5'
-expanded_file = 'New_sequences_labeled_with_Ns.csv'
+MODEL_PATH = 'InstaDeepAI/nucleotide-transformer-2.5b-multi-species'
 
-# Import the tokenizer and the model
-tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path=MODEL_PATH, trust_remote_code=True)
-model = AutoModelForMaskedLM.from_pretrained(pretrained_model_name_or_path=MODEL_PATH, trust_remote_code=True)
+#  'InstaDeepAI/nucleotide-transformer-v2-500m-multi-species'
+# 'InstaDeepAI/nucleotide-transformer-2.5b-multi-species'
 
-df = pd.read_csv(expanded_file)
+OUT_PATH = 'V2_2_5B_multi_PF_geno_pheno_reconstructed.h5'
+IN_PATH = 'geno_pheno_processed.csv'
+
+# -------------------
+# Read the input data
+# -------------------
+
+df = pd.read_csv(IN_PATH, sep=',')
 all_sequences = df['sequence'].astype(str).tolist()
 labels = df['label'].astype(int).tolist()
+log2fold = df['log2fold'].astype(float).tolist()
 print(f'Loaded {len(all_sequences)} expanded sequences')
 
-MAX_SEQUENCES = len(all_sequences)
+MAX_SEQUENCES = len(all_sequences)  # Change this only for testing
 
-print('Class distribution:',
-      {int(k): int(v) for k, v in zip(*np.unique(labels, return_counts=True))})
+print('Class distribution:', {int(k): int(v) for k, v in zip(*np.unique(labels, return_counts=True))})
 
 max_Ns = max(seq.count("N") for seq in all_sequences)
-print("Maximum number of Ns in any input sequence is:", max_Ns)
-
+print('Maximum number of Ns in any input sequence is:', max_Ns)
 max_length = ceil(max([len(_) for _ in all_sequences]) / K_MER_SIZE + K_MER_SIZE - 1) + max_Ns * 5
 # Finds the maximum length sequence in the set, divides by the number of hexamers, and adds five positions for any dangling nucleotides
 print(f'Maximum positions is: {max_length}')
+
+# ----------------------------------
+# Import the tokenizer and the model
+# ----------------------------------
+
+tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path=MODEL_PATH, trust_remote_code=True)
+model = AutoModelForMaskedLM.from_pretrained(pretrained_model_name_or_path=MODEL_PATH, trust_remote_code=True)
+
 
 layers = {}
 cls_dict = {}
@@ -44,13 +55,13 @@ for i, j in enumerate(range(0, MAX_SEQUENCES, BATCH_SIZE)):
     print(f'There are {len(sequences)} sequences in this batch')
     for seq in sequences:
         print(seq)
-    token_ids = tokenizer.batch_encode_plus(
+    token_ids: torch.Tensor = tokenizer.batch_encode_plus(
         sequences,
         return_tensors='pt',
         max_length=max_length,
         padding='max_length'
         )['input_ids']
-    # print(token_ids)
+
     attention_mask = token_ids != tokenizer.pad_token_id
     print(f'Attention mask has type {type(attention_mask)} and shape {attention_mask.shape}')
 
@@ -60,7 +71,7 @@ for i, j in enumerate(range(0, MAX_SEQUENCES, BATCH_SIZE)):
         encoder_attention_mask=attention_mask,
         output_hidden_states=True
         )
-    # print('Type of raw torch outputs is:', type(torch_outs))
+    # print ('Type of raw torch outputs is:', type(torch_outs))
     number_of_hidden_states = len(torch_outs['hidden_states'])
 
     print(f'Number of hidden states for batch {i} is', number_of_hidden_states)
@@ -100,8 +111,10 @@ for i, j in enumerate(range(0, MAX_SEQUENCES, BATCH_SIZE)):
 print(f'There are a total of {len(layers)} layers with keys {layers.keys()}')
 
 labels = np.asarray(labels, dtype=np.int32)
-with h5py.File(OUT_PATH, "w") as ofh:
-    ofh.create_dataset(name="Labels", data=labels)
+log2fold = np.asarray(log2fold, dtype=np.float32)
+with h5py.File(OUT_PATH, mode='w') as ofh:
+    ofh.create_dataset(name='Labels', data=labels)
+    ofh.create_dataset(name='Log2fold', data=log2fold)
 
     for k, v in layers.items():
         layer_name = 'Layer' + str(k)
