@@ -198,31 +198,6 @@ print('\n')
 
 data = np.asarray(fold_changes)
 
-# -------------------------------------------------
-# Perform Breusch-Pagan test for heteroscedasticity
-# -------------------------------------------------
-
-# Fit a baseline model (intercept only) to get residuals
-# This treats the data as a single distribution and finds deviations from the mean
-X_baseline = np.ones(len(data))
-model = sm.OLS(data, X_baseline).fit()
-squared_residuals = model.resid ** 2
-# Create the 'Linear' predictor (the range of the data)
-# We then test if variance changes as the value of the fold change increases
-predictor = sm.add_constant(data)
-
-# Perform Breusch-Pagan Test
-# H0: Variance is constant (homoscedastic)
-# HA: Variance changes linearly with the predictor
-lm_stat, p_value, f_stat, f_p_value = het_breuschpagan(squared_residuals, predictor)
-
-print(f"Breusch-Pagan p-value: {p_value}")
-
-if p_value < 0.05:
-    print("Result: Heteroscedastic. Variance changes linearly within the range.")
-else:
-    print("Result: Homoscedastic. Variance is stable across the range.")
-
 # ------------------------------------------------------------------------------
 #  Now plot the distribution of fold changes as histogram, gaussian, and KDE fit
 # ------------------------------------------------------------------------------
